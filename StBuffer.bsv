@@ -1,6 +1,8 @@
 import Vector::*;
 import Ehr::*;
 
+import MemTypes::*;
+
 /* A store buffer is an actual FIFO. */
 
 interface StBuffer#(numeric type size);
