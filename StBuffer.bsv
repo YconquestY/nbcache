@@ -1,27 +1,29 @@
 import Vector::*;
 import Ehr::*;
 
+import Types::*;
 import MemTypes::*;
 
-/* A store buffer is an actual FIFO. */
+/* A store buffer looks like a FIFO. */
 
-interface StBuffer#(numeric type size);
+interface StBuffer/*#(numeric type size)*/;
     method Action insert(MemReq req); // on store miss
     /* Associatively search for load address for load forwarding
      * The return type `Maybe#` carries indicates both search success and data.
      */
-    method Maybe#(Word) search(Bit#(26) a);
+    method Maybe#(Word) search(Bit#(32) a);
     method ActionValue#(MemReq) remove; // popped to `wbQ`
 endinterface
 
-module mkStBuffer(StBuffer#(StBufferSize));
-    let bufferSize = valueOf(size);
-    Bit#(TAdd#(TLog#(size), 1)) _bufferSize = fromInteger(bufferSize);
+(* synthesize *)
+module mkStBuffer(StBuffer/*#(size)*/) /*provisos (Log#(size, 2))*/;
+    let bufferSize = valueOf(StBufferSize);
+    Bit#(TAdd#(TLog#(StBufferSize), 1)) _bufferSize = fromInteger(bufferSize);
 
-    Vector#(size, Ehr#(2, Maybe#(MemReq))) buffer <- replicateM(mkEhr(tagged Invalid));
-    Reg#(Bit#(TAdd#(TLog#(size), 1)))    iidx <- mkReg(0); // insert index, a.k.a. tail
-    Ehr#(2, Bit#(TAdd#(TLog#(size), 1))) ridx <- mkEhr(0); // read index, a.k.a. head
-    Ehr#(2, Bit#(TAdd#(TLog#(size), 1))) cnt  <- mkEhr(0);
+    Vector#(StBufferSize, Ehr#(2, Maybe#(MemReq))) buffer <- replicateM(mkEhr(tagged Invalid));
+    Reg#(Bit#(TAdd#(TLog#(StBufferSize), 1)))    iidx <- mkReg(0); // insert index, a.k.a. tail
+    Ehr#(2, Bit#(TAdd#(TLog#(StBufferSize), 1))) ridx <- mkEhr(0); // read index, a.k.a. head
+    Ehr#(2, Bit#(TAdd#(TLog#(StBufferSize), 1))) cnt  <- mkEhr(0);
 
     // `remove` < `search` < `insert`
 
@@ -29,18 +31,27 @@ module mkStBuffer(StBuffer#(StBufferSize));
         buffer[ridx[0]][0] <= tagged Invalid;
         ridx[0] <= ridx[0] == _bufferSize - 1 ? 0 : ridx[0] + 1;
         cnt[0] <= cnt[0] - 1;
-        return fromMaybe(buffer[ridx[0]][0]);
+        return fromMaybe(MemReq{word_byte: 4'hF,
+                                addr: 32'hFFFFFFFF,
+                                data: tagged Store 32'hFFFFFFFF},
+                         buffer[ridx[0]][0]);
     endmethod
 
-    method Maybe#(Word) search(Bit#(26) a);
+    method Maybe#(Word) search(Bit#(32) a);
         Maybe#(Word) m = tagged Invalid;
-        let idx = ridx[1];
+        Bit#(TAdd#(TLog#(StBufferSize), 1)) idx = ridx[1];
         for (Integer i = 0; i < bufferSize; i = i + 1) begin
-            if (isValid(buffer[idx][1]) &&
-                fromMaybe(buffer[idx][1]).addr == a) begin
-                m = tagged Valid (fromMaybe(buffer[idx][1]).data);
+            let req = fromMaybe(MemReq{word_byte: 4'hF,
+                                       addr: 32'hFFFFFFFF,
+                                       data: tagged Store 32'hFFFFFFFF},
+                                buffer[idx][1]);
+            if (isValid(buffer[idx][1]) && req.addr == a) begin
+                m = case (req.data) matches
+                        tagged Store .word: tagged Valid word;
+                        default: tagged Valid 32'hFFFFFFFF;
+                    endcase;
             end
-            idx = idx + 1;
+            idx = (idx == _bufferSize) ? 0 : idx + 1;
         end
         return m;
     endmethod

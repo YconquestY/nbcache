@@ -1,11 +1,10 @@
-// TESTS FOR NEW CACHE (CACHE32MC) AND 2 LEVEL CACHE
 import ClientServer::*;
 import GetPut::*;
 import Randomizable::*;
+
 import MainMem::*;
 import MemTypes::*;
-import Cache32::*;
-// import Cache::*;
+import CacheInterface::*;
 
 
 module mkBeveren(Empty);
@@ -13,36 +12,23 @@ module mkBeveren(Empty);
     Randomize#(CacheReq) randomMem <- mkGenericRandomizer;
     MainMemFast mainRef <- mkMainMemFast(); //Initialize both to 0
     MainMem mainMem <- mkMainMem(); //Initialize both to 0
-    Cache32 cache <- mkCache32;
-    // Cache cache2 <- mkCache;
+    NBCache32 cache <- mkNBCache32;
     
     Reg#(Bit#(32)) deadlockChecker <- mkReg(0); 
     Reg#(Bit#(32)) counterIn <- mkReg(0); 
     Reg#(Bit#(32)) counterOut <- mkReg(0); 
     Reg#(Bool) doinit <- mkReg(True);
-
-    // rule connectCacheL1L2;
-    //     let lineReq <- cache.getToMem();
-    //     cache2.putFromProc(lineReq);
-    // endrule
-    // rule connectL2L1Cache;
-    //     let resp <- cache2.getToProc();
-    //     cache.putFromMem(resp);
-    // endrule
-
-    // rule connectCacheDram;
-    //     let lineReq <- cache2.getToMem();
-    //     mainMem.put(lineReq);
-    // endrule
-
-    // rule connectDramCache;
-    //     let resp <- mainMem.get;
-    //     cache2.putFromMem(resp);
-    // endrule
-
-    
+    /*
+    Reg#(Bit#(32)) clk <- mkReg(-1);
+    rule tic;
+        clk <= clk + 1;
+        $display("%02d ", clk);
+        if (clk == 99)
+            $finish;
+    endrule
+    */
     rule connectCacheDram;
-        let lineReq <- cache.getToMem();
+        let lineReq <- cache.getToMem(); // `MemReq`
         mainMem.put(lineReq);
     endrule
     rule connectDramCache;
@@ -57,13 +43,19 @@ module mkBeveren(Empty);
     endrule 
 
     rule reqs (counterIn <= 50000);
-       let newrand <- randomMem.next;
-       deadlockChecker <= 0;
-       CacheReq newreq = newrand;
-       newreq.addr = {0,newreq.addr[8:2],2'b0};  // trims the random address
-       if ( newreq.word_byte == 0) counterIn <= counterIn + 1;  // count only reads
-       mainRef.put(newreq);
-       cache.putFromProc(newreq);
+        let newrand <- randomMem.next;
+        deadlockChecker <= 0;
+        CacheReq newreq = newrand;
+        newreq.addr = {0,newreq.addr[8:2],2'b0}; // trims the random address
+        /*
+        if (newreq.word_byte == 4'h0)
+            $display("read from address %x", newreq.addr);
+        else
+            $display("write to  address %x with data %x and byte enable %b", newreq.addr, newreq.data, newreq.word_byte);
+        */
+        if ( newreq.word_byte == 0) counterIn <= counterIn + 1; // count only reads
+        mainRef.put(newreq);
+        cache.putFromProc(newreq);
     endrule
 
     rule resps;

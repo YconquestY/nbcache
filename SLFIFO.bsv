@@ -1,5 +1,5 @@
 import Ehr::*;
-//import FIFO::*;
+import FIFO::*;
 import Vector::*;
 
 import Types::*;
@@ -19,6 +19,7 @@ interface SLFIFO/*#(numeric type size)*/;
     //method Action clear;
 endinterface
 
+(* synthesize *)
 module mkSLFIFO(SLFIFO/*#(size)*/) /*provisos (Log#(size, 2))*/;
     let bufferSize = valueOf(WaitBufferSize);
     Bit#(TAdd#(TLog#(WaitBufferSize), 1)) _bufferSize = fromInteger(bufferSize);
@@ -66,6 +67,4 @@ module mkSLFIFO(SLFIFO/*#(size)*/) /*provisos (Log#(size, 2))*/;
         iidx <= iidx == _bufferSize - 1 ? 0 : iidx + 1;
         cnt[1] <= cnt[1] + 1;
     endmethod
-
-
 endmodule

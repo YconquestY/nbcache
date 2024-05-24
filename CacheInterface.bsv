@@ -9,12 +9,12 @@ interface NBCache32;
     method ActionValue#(Word) getToProc();
     // TODO: tokenized if multi-level cache
     method ActionValue#(MemReq) getToMem();
-    method Action putFromMem(MemResp e);
+    method Action putFromMem(MainMemResp e);
 endinterface
 
 (* synthesize *)
 module mkNBCache32(NBCache32);
-    CBuffer cBuffer <- mkCBuffer(CBufferSize);
+    CBuffer/*#(CBufferSize)*/ cBuffer <- mkCBuffer;
     NBCache nbCache <- mkNBCache;
 
     rule nbCacheResp;
@@ -23,20 +23,32 @@ module mkNBCache32(NBCache32);
     endrule
 
     method Action putFromProc(CacheReq e);
-        let token <- cBuffer.getToken;
+        Token token = ?;
+        if (e.word_byte == 4'h0) // load
+            token <- cBuffer.getToken;
+        else // store: no write response; do not allocate complete buffer slot
+            token = 0;
+        //$display("");
         nbCache.putFromProc(TokenizedCacheReq{token: token,
                                               req: e});
     endmethod
 
     method ActionValue#(Word) getToProc();
-        return cBuffer.getResult();
+        let resp <- cBuffer.getResult;
+        return resp;
     endmethod
 
     method ActionValue#(MemReq) getToMem();
-        return nbCache.getToMem();
+        let req <- nbCache.getToMem;
+        let data = case (req.data) matches
+                       tagged Store .word: word;
+                       default: 32'hFFFFFFFF;
+                   endcase;
+        //$display("write MEM address %x with data %x and byte enable %b", req.addr, data, req.word_byte);
+        return req;
     endmethod
 
-    method Action putFromMem(MemResp e);
+    method Action putFromMem(MainMemResp e);
         nbCache.putFromMem(e);
     endmethod
 endmodule

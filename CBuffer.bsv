@@ -5,20 +5,21 @@ import Types::*;
 import MemTypes::*;
 
 
-interface CBuffer;
+interface CBuffer/*#(numeric type size)*/;
     method ActionValue#(Token) getToken();
     method Action put(Token idx, Word data);
     method ActionValue#(Word) getResult();
 endinterface
 
-module mkCBuffer#(size)(Cbuffer);
-    let bufferSize = valueOf(size);
-    Bit#(TAdd#(TLog(size), 1)) _bufferSize = fromInteger(_bufferSize);
+(* synthesize *)
+module mkCBuffer(CBuffer/*#(size)*/) /*provisos (Log#(size, 2))*/;
+    let bufferSize = valueOf(CBufferSize);
+    Bit#(TAdd#(TLog#(CBufferSize), 1)) _bufferSize = fromInteger(bufferSize);
 
-    Vector#(size, Ehr#(3, Maybe(Word))) buffer <- replicateM(mkEhr(tagged Invalid));
-    Reg#(Bit#(TAdd#(TLog(size), 1))) iidx <- mkReg(0); // insert index, a.k.a. tail
-    Reg#(Bit#(TAdd#(TLog(size), 1))) ridx <- mkReg(0); // read index, a.k.a. head
-    Ehr#(2, Bit#(TAdd#(TLog(size), 1))) cnt <- mkEhr(0);
+    Vector#(CBufferSize, Ehr#(3, Maybe#(Word))) buffer <- replicateM(mkEhr(tagged Invalid));
+    Reg#(Bit#(TAdd#(TLog#(CBufferSize), 1))) iidx <- mkReg(0); // insert index, a.k.a. tail
+    Reg#(Bit#(TAdd#(TLog#(CBufferSize), 1))) ridx <- mkReg(0); // read index, a.k.a. head
+    Ehr#(2, Bit#(TAdd#(TLog#(CBufferSize), 1))) cnt <- mkEhr(0);
 
     // `getToken` < `put` < `getResult`
 
@@ -37,6 +38,7 @@ module mkCBuffer#(size)(Cbuffer);
         buffer[ridx][2] <= tagged Invalid;
         ridx <= ridx == _bufferSize - 1 ? 0 : ridx + 1;
         cnt[1] <= cnt[1] - 1;
-        return fromMaybe(buffer[ridx][2]);
+        return fromMaybe(32'hFFFFFFFF,
+                         buffer[ridx][2]);
     endmethod
 endmodule
